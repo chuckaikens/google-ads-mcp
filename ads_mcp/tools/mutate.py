@@ -539,3 +539,173 @@ def update_keyword_bid(
         "updated_keyword": response.results[0].resource_name,
         "new_cpc_bid": f"${cpc_bid_micros / 1_000_000:.2f}",
     }
+
+
+@mcp.tool()
+def remove_campaign(
+    customer_id: str,
+    campaign_id: str,
+) -> dict:
+    """Remove (delete) a campaign. This is permanent and cannot be undone.
+
+    Args:
+        customer_id: The customer account ID (numbers only, no dashes)
+        campaign_id: The campaign ID to remove
+    """
+    client = utils.get_googleads_client()
+    campaign_service = client.get_service("CampaignService")
+
+    operation = client.get_type("CampaignOperation")
+    operation.remove = campaign_service.campaign_path(
+        customer_id, campaign_id
+    )
+
+    response = campaign_service.mutate_campaigns(
+        customer_id=customer_id,
+        operations=[operation],
+    )
+
+    return {
+        "status": "success",
+        "removed_campaign": response.results[0].resource_name,
+    }
+
+
+@mcp.tool()
+def remove_ad_group(
+    customer_id: str,
+    ad_group_id: str,
+) -> dict:
+    """Remove (delete) an ad group. This is permanent and cannot be undone.
+
+    Args:
+        customer_id: The customer account ID (numbers only, no dashes)
+        ad_group_id: The ad group ID to remove
+    """
+    client = utils.get_googleads_client()
+    ad_group_service = client.get_service("AdGroupService")
+
+    operation = client.get_type("AdGroupOperation")
+    operation.remove = ad_group_service.ad_group_path(
+        customer_id, ad_group_id
+    )
+
+    response = ad_group_service.mutate_ad_groups(
+        customer_id=customer_id,
+        operations=[operation],
+    )
+
+    return {
+        "status": "success",
+        "removed_ad_group": response.results[0].resource_name,
+    }
+
+
+@mcp.tool()
+def remove_ad(
+    customer_id: str,
+    ad_group_id: str,
+    ad_id: str,
+) -> dict:
+    """Remove (delete) an ad. This is permanent and cannot be undone.
+
+    Args:
+        customer_id: The customer account ID (numbers only, no dashes)
+        ad_group_id: The ad group ID containing the ad
+        ad_id: The ad ID to remove
+    """
+    client = utils.get_googleads_client()
+    ad_group_ad_service = client.get_service("AdGroupAdService")
+
+    operation = client.get_type("AdGroupAdOperation")
+    operation.remove = ad_group_ad_service.ad_group_ad_path(
+        customer_id, ad_group_id, ad_id
+    )
+
+    response = ad_group_ad_service.mutate_ad_group_ads(
+        customer_id=customer_id,
+        operations=[operation],
+    )
+
+    return {
+        "status": "success",
+        "removed_ad": response.results[0].resource_name,
+    }
+
+
+@mcp.tool()
+def rename_campaign(
+    customer_id: str,
+    campaign_id: str,
+    new_name: str,
+) -> dict:
+    """Rename a campaign.
+
+    Args:
+        customer_id: The customer account ID (numbers only, no dashes)
+        campaign_id: The campaign ID to rename
+        new_name: The new campaign name
+    """
+    client = utils.get_googleads_client()
+    campaign_service = client.get_service("CampaignService")
+
+    operation = client.get_type("CampaignOperation")
+    campaign = operation.update
+    campaign.resource_name = campaign_service.campaign_path(
+        customer_id, campaign_id
+    )
+    campaign.name = new_name
+
+    field_mask = client.get_type("FieldMask")
+    field_mask.paths.append("name")
+    operation.update_mask.CopyFrom(field_mask)
+
+    response = campaign_service.mutate_campaigns(
+        customer_id=customer_id,
+        operations=[operation],
+    )
+
+    return {
+        "status": "success",
+        "updated_campaign": response.results[0].resource_name,
+        "new_name": new_name,
+    }
+
+
+@mcp.tool()
+def rename_ad_group(
+    customer_id: str,
+    ad_group_id: str,
+    new_name: str,
+) -> dict:
+    """Rename an ad group.
+
+    Args:
+        customer_id: The customer account ID (numbers only, no dashes)
+        ad_group_id: The ad group ID to rename
+        new_name: The new ad group name
+    """
+    client = utils.get_googleads_client()
+    ad_group_service = client.get_service("AdGroupService")
+
+    operation = client.get_type("AdGroupOperation")
+    ad_group = operation.update
+    ad_group.resource_name = ad_group_service.ad_group_path(
+        customer_id, ad_group_id
+    )
+    ad_group.name = new_name
+
+    field_mask = client.get_type("FieldMask")
+    field_mask.paths.append("name")
+    operation.update_mask.CopyFrom(field_mask)
+
+    response = ad_group_service.mutate_ad_groups(
+        customer_id=customer_id,
+        operations=[operation],
+    )
+
+    return {
+        "status": "success",
+        "updated_ad_group": response.results[0].resource_name,
+        "new_name": new_name,
+    }
