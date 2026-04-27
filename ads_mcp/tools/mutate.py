@@ -3,6 +3,7 @@
 from typing import Optional
 from ads_mcp.coordinator import mcp
 import ads_mcp.utils as utils
+import json
 
 
 @mcp.tool()
@@ -66,7 +67,7 @@ def update_ad_status(
         customer_id, ad_group_id, ad_id
     )
 
-    status_enum = client.enums.AdGroupAdStatusEnum.AdGroupAdStatus
+    status_enum = client.enums.AdGroupAdStatusEnum
     ad_group_ad.status = getattr(status_enum, status.upper())
 
     field_mask = client.get_type("FieldMask")
@@ -107,7 +108,7 @@ def update_campaign_status(
         customer_id, campaign_id
     )
 
-    status_enum = client.enums.CampaignStatusEnum.CampaignStatus
+    status_enum = client.enums.CampaignStatusEnum
     campaign.status = getattr(status_enum, status.upper())
 
     field_mask = client.get_type("FieldMask")
@@ -148,7 +149,7 @@ def update_ad_group_status(
         customer_id, ad_group_id
     )
 
-    status_enum = client.enums.AdGroupStatusEnum.AdGroupStatus
+    status_enum = client.enums.AdGroupStatusEnum
     ad_group.status = getattr(status_enum, status.upper())
 
     field_mask = client.get_type("FieldMask")
@@ -232,7 +233,7 @@ def update_keyword_status(
         customer_id, ad_group_id, criterion_id
     )
 
-    status_enum = client.enums.AdGroupCriterionStatusEnum.AdGroupCriterionStatus
+    status_enum = client.enums.AdGroupCriterionStatusEnum
     criterion.status = getattr(status_enum, status.upper())
 
     field_mask = client.get_type("FieldMask")
@@ -279,10 +280,10 @@ def add_keyword(
     criterion.ad_group = ad_group_service.ad_group_path(
         customer_id, ad_group_id
     )
-    criterion.status = client.enums.AdGroupCriterionStatusEnum.AdGroupCriterionStatus.ENABLED
+    criterion.status = client.enums.AdGroupCriterionStatusEnum.ENABLED
     criterion.keyword.text = keyword_text
     criterion.keyword.match_type = getattr(
-        client.enums.KeywordMatchTypeEnum.KeywordMatchType, match_type.upper()
+        client.enums.KeywordMatchTypeEnum, match_type.upper()
     )
 
     if final_url:
@@ -363,7 +364,7 @@ def add_negative_keyword(
     criterion.negative = True
     criterion.keyword.text = keyword_text
     criterion.keyword.match_type = getattr(
-        client.enums.KeywordMatchTypeEnum.KeywordMatchType, match_type.upper()
+        client.enums.KeywordMatchTypeEnum, match_type.upper()
     )
 
     response = ad_group_criterion_service.mutate_ad_group_criteria(
@@ -406,7 +407,7 @@ def add_campaign_negative_keyword(
     criterion.negative = True
     criterion.keyword.text = keyword_text
     criterion.keyword.match_type = getattr(
-        client.enums.KeywordMatchTypeEnum.KeywordMatchType, match_type.upper()
+        client.enums.KeywordMatchTypeEnum, match_type.upper()
     )
 
     response = campaign_criterion_service.mutate_campaign_criteria(
@@ -708,4 +709,138 @@ def rename_ad_group(
         "status": "success",
         "updated_ad_group": response.results[0].resource_name,
         "new_name": new_name,
+    }
+
+
+@mcp.tool()
+def create_ad_group(
+    customer_id: str,
+    campaign_id: str,
+    name: str,
+    cpc_bid_micros: Optional[int] = None,
+    status: str = "ENABLED",
+) -> dict:
+    """Create a new ad group in a campaign.
+
+    Args:
+        customer_id: The customer account ID (numbers only, no dashes)
+        campaign_id: The campaign ID to create the ad group in
+        name: The name for the new ad group
+        cpc_bid_micros: Optional default CPC bid in micros (e.g., 1500000 = $1.50)
+        status: The initial status: ENABLED or PAUSED (default ENABLED)
+    """
+    client = utils.get_googleads_client()
+    ad_group_service = client.get_service("AdGroupService")
+    campaign_service = client.get_service("CampaignService")
+
+    operation = client.get_type("AdGroupOperation")
+    ad_group = operation.create
+    ad_group.name = name
+    ad_group.campaign = campaign_service.campaign_path(
+        customer_id, campaign_id
+    )
+    ad_group.type_ = client.enums.AdGroupTypeEnum.SEARCH_STANDARD
+
+    status_enum = client.enums.AdGroupStatusEnum
+    ad_group.status = getattr(status_enum, status.upper())
+
+    if cpc_bid_micros:
+        ad_group.cpc_bid_micros = cpc_bid_micros
+
+    response = ad_group_service.mutate_ad_groups(
+        customer_id=customer_id,
+        operations=[operation],
+    )
+
+    return {
+        "status": "success",
+        "created_ad_group": response.results[0].resource_name,
+        "name": name,
+    }
+
+
+@mcp.tool()
+def create_responsive_search_ad(
+    customer_id: str,
+    ad_group_id: str,
+    final_url: str,
+    headlines: str,
+    descriptions: str,
+    path1: Optional[str] = None,
+    path2: Optional[str] = None,
+) -> dict:
+    """Create a new Responsive Search Ad (RSA) in an ad group.
+
+    Args:
+        customer_id: The customer account ID (numbers only, no dashes)
+        ad_group_id: The ad group ID to create the ad in
+        final_url: The landing page URL for the ad
+        headlines: JSON array of headline objects. Each object has "text" (required, max 30 chars) and optionally "pinned_field" (1=HEADLINE_1, 2=HEADLINE_2, 3=HEADLINE_3). Minimum 3, maximum 15 headlines.
+        descriptions: JSON array of description objects. Each object has "text" (required, max 90 chars) and optionally "pinned_field" (1=DESCRIPTION_1, 2=DESCRIPTION_2). Minimum 2, maximum 4 descriptions.
+        path1: Optional display URL path1 (max 15 chars, e.g., "caskets")
+        path2: Optional display URL path2 (max 15 chars, e.g., "custom")
+    """
+    client = utils.get_googleads_client()
+    ad_group_ad_service = client.get_service("AdGroupAdService")
+    ad_group_service = client.get_service("AdGroupService")
+
+    headline_data = json.loads(headlines) if isinstance(headlines, str) else headlines
+    description_data = json.loads(descriptions) if isinstance(descriptions, str) else descriptions
+
+    operation = client.get_type("AdGroupAdOperation")
+    ad_group_ad = operation.create
+    ad_group_ad.ad_group = ad_group_service.ad_group_path(
+        customer_id, ad_group_id
+    )
+    ad_group_ad.status = client.enums.AdGroupAdStatusEnum.ENABLED
+
+    ad = ad_group_ad.ad
+    ad.final_urls.append(final_url)
+
+    pinned_field_map = {
+        1: client.enums.ServedAssetFieldTypeEnum.HEADLINE_1,
+        2: client.enums.ServedAssetFieldTypeEnum.HEADLINE_2,
+        3: client.enums.ServedAssetFieldTypeEnum.HEADLINE_3,
+    }
+    pinned_desc_map = {
+        1: client.enums.ServedAssetFieldTypeEnum.DESCRIPTION_1,
+        2: client.enums.ServedAssetFieldTypeEnum.DESCRIPTION_2,
+    }
+
+    for h in headline_data:
+        ad_text_asset = client.get_type("AdTextAsset")
+        ad_text_asset.text = h["text"]
+        if h.get("pinned_field"):
+            ad_text_asset.pinned_field = pinned_field_map.get(
+                h["pinned_field"],
+                client.enums.ServedAssetFieldTypeEnum.UNSPECIFIED,
+            )
+        ad.responsive_search_ad.headlines.append(ad_text_asset)
+
+    for d in description_data:
+        ad_text_asset = client.get_type("AdTextAsset")
+        ad_text_asset.text = d["text"]
+        if d.get("pinned_field"):
+            ad_text_asset.pinned_field = pinned_desc_map.get(
+                d["pinned_field"],
+                client.enums.ServedAssetFieldTypeEnum.UNSPECIFIED,
+            )
+        ad.responsive_search_ad.descriptions.append(ad_text_asset)
+
+    if path1:
+        ad.responsive_search_ad.path1 = path1
+    if path2:
+        ad.responsive_search_ad.path2 = path2
+
+    response = ad_group_ad_service.mutate_ad_group_ads(
+        customer_id=customer_id,
+        operations=[operation],
+    )
+
+    return {
+        "status": "success",
+        "created_ad": response.results[0].resource_name,
+        "final_url": final_url,
+        "headline_count": len(headline_data),
+        "description_count": len(description_data),
     }
